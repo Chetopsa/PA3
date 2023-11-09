@@ -73,7 +73,6 @@ void *processing(void *args)
         exit(1);
     }
     // Traverse through all entries
-    
     while((entry = readdir(dir)) != NULL){
         // skip . and ..
         if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0){
