@@ -195,9 +195,6 @@ void * worker(void *args)
         
             node_t* n_img = pop(queue);
             //get correct thread id
-           
-            char out_folder[256];
-            sprintf(out_folder, "output/%d", *id);
 
             pthread_mutex_unlock(&queue_lock);
             printf("worker%d unlocked\n", *id);
@@ -210,11 +207,15 @@ void * worker(void *args)
             Stbi_load takes:
                 A file name, int pointer for width, height, and bpp
             */
+            printf("ayyy?");
             int width; int height; int bpp;
-            
-            uint8_t* image_result = stbi_load(file_name, &width, &height, &bpp, CHANNEL_NUM);
+            printf("file_name  =  %s\n", file_name);
+            char* image_name = get_filename_from_path(file_name);
+            char output_image[PATH_MAX];
+            sprintf(output_image, "%s/%s", output_folder, image_name);
+            uint8_t* image_result = (uint8_t **)malloc(sizeof(uint8_t*));
+            image_result = stbi_load(file_name, &width, &height, &bpp, CHANNEL_NUM);
 
-            
             uint8_t **result_matrix = (uint8_t **)malloc(sizeof(uint8_t*) * width);
             uint8_t** img_matrix = (uint8_t **)malloc(sizeof(uint8_t*) * width);
             for(int i = 0; i < width; i++){
@@ -232,12 +233,12 @@ void * worker(void *args)
             ////TODO: you should be ready to call flip_left_to_right or flip_upside_down depends on the angle(Should just be 180 or 270)
             //both take image matrix from linear_to_image, and result_matrix to store data, and width and height.
             //Hint figure out which function you will call. 
-            if(rotation_angle == 270){
-                printf("270 angle\n");
+            if(rotation_angle == 180){
+                printf("180 angle\n");
                 flip_left_to_right(img_matrix, result_matrix, width, height);
             }
             else{ 
-                printf("180 angle\n");
+                printf("270 angle\n");
                 flip_upside_down(img_matrix, result_matrix, width, height);
             }
 
@@ -254,13 +255,17 @@ void * worker(void *args)
             //height
             //img_array
             //width*CHANNEL_NUM
-            printf("output_folder: %s\n", output_folder);
+            printf("output_image: %s\n", output_image);
             if (img_array == NULL){
                 printf("NOT GOOOD\n\n\n\n");
             }
             printf("%d   %d\n\n", width, height );
-            stbi_write_png(output_folder, width, height, CHANNEL_NUM, img_array, width * CHANNEL_NUM);
+            if(stbi_write_png(output_image, width, height, CHANNEL_NUM, img_array, width * CHANNEL_NUM) == 0){
+                perror("image failed to write");
+                exit(1);
+            }
             free(img_array);
+            free(image_result);
             for(int i = 0; i < width; i++){
                 free(result_matrix[i]);
                 free(img_matrix[i]);
@@ -288,10 +293,7 @@ int main(int argc, char* argv[])
     printf("start:\n");
     //open log file
     strcpy(output_folder, argv[2]);
-    char log_name[PATH_MAX];
-    sprintf(log_name, "%s.txt",LOG_FILE_NAME);
-    printf("%s: \n", log_name);
-    log_file = fopen(log_name, "a");
+    log_file = fopen(LOG_FILE_NAME, "a");
     
     processing_args_t process_args;
     //create queue
