@@ -16,10 +16,11 @@ int thread_ids[MAX_THREADS];
 pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER; // Mutex for queue access
 pthread_cond_t queue_not_empty = PTHREAD_COND_INITIALIZER; // producer cond
 pthread_mutex_t processing_wait = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t processing_wait_cond = PTHREAD_COND_INITIALIZER; 
+pthread_cond_t processing_done = PTHREAD_COND_INITIALIZER; 
 
 char output_folder[PATH_MAX];
-int no_files = 0; //signal when workers should stop; 1 means no_files left
+int no_files = 0; 
+int active_workers = 0;//signal when workers should stop; 1 means no_files left
 //How will you track the requests globally between threads? How will you ensure this is thread safe?
 //How will you track which index in the request queue to remove next?
 //How will you update and utilize the current number of requests in the request queue?
@@ -111,8 +112,8 @@ void log_pretty_print(FILE* to_write, int threadId, int requestNumber, char * fi
 void *processing(void *args)
 {
     processing_args_t *p_args = (processing_args_t *)args;
-    pthread_mutex_lock(&queue_lock);
-
+    
+    
     printf("Processing QUEUE_LOCKED\n");
     DIR *dir;
     struct dirent *entry;
@@ -121,6 +122,7 @@ void *processing(void *args)
         perror("error opening directory\n");
         exit(1);
     }
+    pthread_mutex_lock(&queue_lock);
     // Traverse through all entries
     while((entry = readdir(dir)) != NULL){
         // skip . and ..
@@ -132,14 +134,21 @@ void *processing(void *args)
             char entry_path[PATH_MAX];
             sprintf(entry_path, "%s/%s", p_args->inp_file, entry->d_name);
             push(queue, entry_path, p_args->rotation_angle); 
+            pthread_cond_signal(&queue_not_empty);
         }
     }
 
+    //all files finished
     no_files = 1;
+    pthread_cond_broadcast(&queue_not_empty);
     pthread_mutex_unlock(&queue_lock);
-    printf("Processing QUEUE_UNLOCKED\n");
-    pthread_cond_broadcast(&queue_not_empty); 
-    printf("Processing SIGNAL_QUEUE_NOT_EMPTY\n");
+
+    //wait for workers to finish
+    pthread_mutex_lock(&processing_wait);
+    while(active_workers > 0 ){
+        pthread_cond_wait(&processing_done, &processing_wait);
+    }
+    pthread_mutex_unlock(&processing_wait);
     // close current directory
 
     closedir(dir);
@@ -178,38 +187,43 @@ void * worker(void *args)
             int* id = (int*) args;
             pthread_mutex_lock(&queue_lock);
             printf("worker%d locked\n", *id);
+            active_workers++;
             while(queue_size == 0 ){
                 if(no_files){
-                // unlock the stand
+                //unlock queue
+                    active_workers--;
+                    if (active_workers == 0) {
+                        //last worker
+                        pthread_cond_signal(&processing_done); 
+                    }
                     pthread_mutex_unlock(&queue_lock);
-                    printf("worker%d unlocked and terminating...\n", *id);
                     pthread_exit(NULL);
-            }
+                }
                 pthread_cond_wait(&queue_not_empty, &queue_lock);
             }    
         
-            node_t* n_img = pop(queue);
-            //get correct thread id
-
-            pthread_mutex_unlock(&queue_lock);
-            printf("worker%d unlocked\n", *id);
+            node_t* n_img = pop(queue);//get correct thread id
             char file_name[PATH_MAX];
             strcpy(file_name, n_img->file_name);
             //print out log
             log_pretty_print(log_file, *id, request_num++, file_name);
+            pthread_mutex_unlock(&queue_lock);
+            printf("worker%d unlocked\n", *id);
+            
             int rotation_angle = n_img->rotation_angle;
              /*
             Stbi_load takes:
                 A file name, int pointer for width, height, and bpp
             */
-            printf("ayyy?");
+            
             int width; int height; int bpp;
             printf("file_name  =  %s\n", file_name);
+            //get image path
             char* image_name = get_filename_from_path(file_name);
             char output_image[PATH_MAX];
             sprintf(output_image, "%s/%s", output_folder, image_name);
-            uint8_t* image_result = (uint8_t **)malloc(sizeof(uint8_t*));
-            image_result = stbi_load(file_name, &width, &height, &bpp, CHANNEL_NUM);
+            
+            uint8_t* image_result = stbi_load(file_name, &width, &height, &bpp, CHANNEL_NUM);
 
             uint8_t **result_matrix = (uint8_t **)malloc(sizeof(uint8_t*) * width);
             uint8_t** img_matrix = (uint8_t **)malloc(sizeof(uint8_t*) * width);
@@ -260,13 +274,17 @@ void * worker(void *args)
                 exit(1);
             }
             free(img_array);
-            free(image_result);
             for(int i = 0; i < width; i++){
                 free(result_matrix[i]);
                 free(img_matrix[i]);
             }
             free(result_matrix);
             free(img_matrix);
+            active_workers--;
+            if (no_files && active_workers == 0) {
+                pthread_cond_signal(&processing_done); // Signal processing if it's the last worker
+            }
+            pthread_mutex_unlock(&queue_lock);
     }
 }
 
