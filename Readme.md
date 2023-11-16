@@ -11,25 +11,28 @@
 
 # Changes
 **image_rotation** added functions for managing a queue
+**Makefile** added zip function
 
 # Contributions
-Ahmed-dahir Dayib - helped write main and processing for inter, will work on thread logging
+Ahmed-dahir Dayib - helped write main and processing for inter, thread logging
 Ahmed Kadar - Helped write main and processing for inter, will work on worker
-Cheston Opsasnick - wrote the queues and Readme, will work on Worker
+Cheston Opsasnick - wrote the queues and Readme, debugged mutexes and worker
 
 # implementing thread processing
 main:
     Create the threads for the workers and single thread for proccessing
-    that adds items to the queue.
+    that adds items to the queue. Joins thread when finished
 processing:
     Traverse directory and add the .png files to a queue which can be accessed
     by the worker threads. To allow for thread safety use mutex locks and cvs whenever
-    adding to the queue.
+    adding to the queue. and signal to the wokrers when no more files are left.
 worker:
-    uses cv and mutex lock around the shared queue and other shared data like the thread_list to access it, then
+    Uses cv and mutex lock around the shared queue and other shared data like int no_files to
     perform actions to rotate the image and write to the output folder.
 log:
-    writes the threads to a file, uses mutex locks to ensure no thread lcokign or race conditions when writing to file
+    Write the thread id's to a file with with how mnay times each file executed
+
+final: same implemetnaiton as pseudo code for inter.
 
 
 
