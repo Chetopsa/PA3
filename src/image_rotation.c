@@ -14,10 +14,9 @@ int thread_ids[MAX_THREADS];
 
 //What kind of locks will you need to make everything thread safe? [Hint you need multiple]
 pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER; // Mutex for queue access
-pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER; // Mutex for log access
 pthread_cond_t queue_not_empty = PTHREAD_COND_INITIALIZER; // producer cond
-pthread_mutex_t queue_done = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t done_cond = PTHREAD_COND_INITIALIZER; 
+pthread_mutex_t processing_wait = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t processing_wait_cond = PTHREAD_COND_INITIALIZER; 
 
 char output_folder[PATH_MAX];
 int no_files = 0; //signal when workers should stop; 1 means no_files left
@@ -87,12 +86,10 @@ int free_q(request_t *queue){
 */
 void log_pretty_print(FILE* to_write, int threadId, int requestNumber, char * file_name){
    // Lock the log file mutex before writing to the log
-    pthread_mutex_lock(&log_mutex);
     // Write to the log file and to stdout
     fprintf(to_write, "[%d][%d][%s]\n", threadId, requestNumber, file_name);
     printf("[%d][%d][%s]\n", threadId, requestNumber, file_name);
     // Unlock the log file mutex after writing
-    pthread_mutex_unlock(&log_mutex);
 }
 
 
@@ -115,7 +112,6 @@ void *processing(void *args)
 {
     processing_args_t *p_args = (processing_args_t *)args;
     pthread_mutex_lock(&queue_lock);
-    pthread_mutex_lock(&queue_done);
 
     printf("Processing QUEUE_LOCKED\n");
     DIR *dir;
@@ -142,10 +138,9 @@ void *processing(void *args)
     no_files = 1;
     pthread_mutex_unlock(&queue_lock);
     printf("Processing QUEUE_UNLOCKED\n");
-    pthread_cond_signal(&queue_not_empty); 
+    pthread_cond_broadcast(&queue_not_empty); 
     printf("Processing SIGNAL_QUEUE_NOT_EMPTY\n");
     // close current directory
-    pthread_cond_signal(&queue_done);
 
     closedir(dir);
     pthread_exit(NULL);

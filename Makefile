@@ -21,6 +21,8 @@ test: clean all
 outdir: 
 	for i in `seq 0 10`; do mkdir -p -m 0777 "output/$$i"; done;
 
+zip:
+	zip -r PA3_final.zip include lib src img expected Makefile README.md
 clean:
 	rm -f image_rotation
 	rm -rf output
